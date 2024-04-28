@@ -1,10 +1,10 @@
 #FROM registry.access.redhat.com/ubi8/nodejs-20
-FROM registry.access.redhat.com/ubi8/nodejs-18:1-86 as builder
+FROM registry.access.redhat.com/ubi8/nodejs-18:1-102 as builder
 
 
 USER 0
 RUN fix-permissions ./
-USER 1001
+USER root
 
 RUN yum install --disableplugin=subscription-manager python2  openssl-devel cyrus-sasl -y \
     && yum clean --disableplugin=subscription-manager packages \
