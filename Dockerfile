@@ -1,27 +1,60 @@
-#FROM registry.access.redhat.com/ubi8/nodejs-20
+###########
+# Builder
+###########
 FROM registry.access.redhat.com/ubi8/nodejs-18:1-102 as builder
-
-
-USER 0
-RUN fix-permissions ./
+WORKDIR /usr/src/app
 USER root
 
-RUN yum install --disableplugin=subscription-manager python2  openssl-devel cyrus-sasl -y \
-    && yum clean --disableplugin=subscription-manager packages \
-    && ln -s /usr/bin/python2 /usr/bin/python \
-    && useradd --uid 1000 --gid 0 --shell /bin/bash --create-home node
+# install node-gyp dependencies
+RUN yum install -y python3 make gcc-c++
 
+# install pnpm
+RUN corepack enable && corepack prepare pnpm@latest --activate
 
-RUN mkdir ./app
-WORKDIR $HOME/app
-COPY package.json .
-RUN npm install --omit=dev
-COPY server ./server
-COPY public ./public
+# Copy application dependency manifests to the container image.
+COPY ./package.json ./package.json
+COPY ./docker/nc-gui/ ./docker/nc-gui/
+COPY ./docker/main.js ./docker/index.js
+COPY ./docker/start-local.sh /usr/src/appEntry/start.sh
+COPY src/public/ ./docker/public/
 
+# for pnpm to generate a flat node_modules without symlinks
+# so that modclean could work as expected
+RUN echo "node-linker=hoisted" > .npmrc
+
+# install production dependencies,
+# reduce node_module size with modclean & removing sqlite deps,
+# package built code into app.tar.gz & add execute permission to start.sh
+RUN pnpm uninstall nocodb-sdk
+RUN pnpm install --prod --shamefully-hoist --reporter=silent \
+    && pnpm dlx modclean --patterns="default:*" --ignore="nc-lib-gui/**,dayjs/**,express-status-monitor/**,@azure/msal-node/dist/**" --run  \
+    && rm -rf ./node_modules/sqlite3/deps \
+    && tar -czf ../appEntry/app.tar.gz ./* \
+    && chmod +x /usr/src/appEntry/start.sh
+
+##########
+# Runner
+##########
+FROM registry.access.redhat.com/ubi8/ubi-minimal:8.9-1161
+WORKDIR /usr/src/app
+
+ENV NC_DOCKER 0.6
 ENV NODE_ENV production
-ENV PORT 3000
+ENV PORT 8080
+ENV NC_TOOL_DIR=/usr/app/data/
 
-EXPOSE 3000
+RUN apk --update --no-cache add \
+    nodejs \
+    tar \
+    dumb-init \
+    curl \
+    jq
 
-CMD ["node", "server/server.js"]
+# Copy packaged production code & main entry file
+COPY --from=builder /usr/src/appEntry/ /usr/src/appEntry/
+
+EXPOSE 8080
+ENTRYPOINT ["/usr/bin/dumb-init", "--"]
+
+# Start Nocodb
+CMD ["/usr/src/appEntry/start.sh"]
