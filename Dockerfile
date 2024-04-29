@@ -6,7 +6,7 @@ ENV NODE_ENV production
 ENV PORT 8080
 ENV NC_TOOL_DIR=/usr/app/data/
 
-RUN apk --update --no-cache add \
+RUN yum --update --no-cache add \
     nodejs \
     tar \
     dumb-init \
