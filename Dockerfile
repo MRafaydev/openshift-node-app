@@ -1,4 +1,4 @@
-FROM registry.access.redhat.com/ubi8/ubi-minimal:8.9-1161
+FROM registry.access.redhat.com/ubi8/ubi:8.9-1160
 WORKDIR /usr/src/app
 
 ENV NC_DOCKER 0.6
